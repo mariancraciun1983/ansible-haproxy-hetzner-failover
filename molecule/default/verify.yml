@@ -2,3 +2,27 @@
 - name: Verify
   hosts: all
   gather_facts: true
+  vars:
+    expected_content: "<h1>[{{ ansible_hostname }}]</h1>"
+  tasks:
+  - name: fetch http index
+    uri:
+      url: http://localhost
+      return_content: yes
+    register: http
+
+  - name: fetch https index
+    uri:
+      url: https://localhost
+      return_content: yes
+      validate_certs: false
+    register: https
+
+  - name: verify expected content
+    assert:
+      that:
+        - expected_content in http.content
+        - expected_content in https.content
+      fail_msg: >-
+        The {{ expected_content }} was expected to be found in
+        the returned http/https content

@@ -92,17 +92,17 @@
             op monitor timeout=10s interval=5s
             --disabled
           - >-
-            pcs -f haproxy-ha resource create HaproxyVipInternal ocf:heartbeat:IPaddr2 
-            ip={{haproxy_ha_vip_internal.ip}} 
-            cidr_netmask={{haproxy_ha_vip_internal.netmask}} 
-            nic={{haproxy_ha_vip_internal.nic}} 
+            pcs -f haproxy-ha resource create HaproxyVipInternal ocf:heartbeat:IPaddr2
+            ip={{ haproxy_ha_vip_internal.ip }}
+            cidr_netmask={{ haproxy_ha_vip_internal.netmask }}
+            nic={{ haproxy_ha_vip_internal.nic }}
             op monitor interval=5s timeout=10s on-fail=restart
             --disabled
           - >-
-            pcs -f haproxy-ha resource create HaproxyVipExternal ocf:heartbeat:IPaddr2 
-            ip={{haproxy_ha_failover_external.ip}} 
-            cidr_netmask={{haproxy_ha_failover_external.netmask}} 
-            nic={{haproxy_ha_failover_external.nic}} 
+            pcs -f haproxy-ha resource create HaproxyVipExternal ocf:heartbeat:IPaddr2
+            ip={{ haproxy_ha_failover_external.ip }}
+            cidr_netmask={{ haproxy_ha_failover_external.netmask }}
+            nic={{ haproxy_ha_failover_external.nic }}
             op monitor interval=5s timeout=10s on-fail=restart
             --disabled
           - pcs cluster cib-push --wait 60 haproxy-ha

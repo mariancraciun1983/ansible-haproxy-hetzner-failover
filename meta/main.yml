@@ -2,9 +2,9 @@
 galaxy_info:
   role_name: haproxy_ha_hetzner_cluster
   author: Marian Craciun
-  description: >- 
-    Ansible role to configuring a Haproxy HA cluster
-    with corosync and automatic failover on Hetzner Robot servers
+  description: >-
+    Ansible role for configuring a Haproxy HA cluster
+    with Corosync and automatic failover on Hetzner's Robot servers
   license: MIT
 
   min_ansible_version: 2.7

@@ -5,7 +5,7 @@
       - haproxy_ssl_source is defined
       - "{{ lookup('fileglob', haproxy_ssl_source + '/*.pem' ) | length > 0 }}"
     fail_msg: >-
-      The haproxy_ssl_source ({{ haproxy_ssl_source }}) must be defined 
+      The haproxy_ssl_source ({{ haproxy_ssl_source }}) must be defined
       and at least one file ending with .pem must be present locally
   delegate_to: localhost
 
