@@ -1,0 +1,29 @@
+---
+- name: certificates | check requirements
+  assert:
+    that:
+      - haproxy_ssl_source is defined
+      - "{{ lookup('fileglob', haproxy_ssl_source + '/*.pem' ) | length > 0 }}"
+    fail_msg: >-
+      The haproxy_ssl_source ({{ haproxy_ssl_source }}) must be defined 
+      and at least one file ending with .pem must be present locally
+  delegate_to: localhost
+
+- name: certificates | ensure ssl directory
+  file:
+    path: "{{ haproxy_ssl_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: 0750
+
+- name: certificates | deploy local *.pem
+  copy:
+    src: "{{ item }}"
+    dest: "{{ haproxy_ssl_dir }}"
+    owner: root
+    group: root
+    mode: 0640
+  with_fileglob:
+    - "{{ haproxy_ssl_source }}/*.pem"
+  notify: restart haproxy

@@ -1,0 +1,40 @@
+---
+dependency:
+  name: galaxy
+
+driver:
+  name: docker
+
+lint: |
+  set -e
+  yamllint .
+  ansible-lint
+
+platforms:
+  - name: focal
+    image: geerlingguy/docker-ubuntu2004-ansible:latest
+    tmpfs:
+      - /run
+      - /tmp
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:ro
+    capabilities:
+      - SYS_ADMIN
+    command: "/lib/systemd/systemd"
+    privileged: true
+    pre_build_image: true
+
+provisioner:
+  name: ansible
+  inventory:
+    group_vars:
+      all:
+        install_python3: false
+        install_corosync: false
+
+        haproxy_ssl_deploy: true
+        haproxy_ssl_source: molecule/default/files/ssl
+        haproxy_stats: true
+
+verifier:
+  name: ansible

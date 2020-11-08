@@ -1,0 +1,28 @@
+---
+- name: packages | add dependencies
+  apt:
+    name:
+      - gnupg2
+      - apt-transport-https
+      - ca-certificates
+      - software-properties-common
+    update_cache: true
+    state: present
+- name: install | add repository from PPA and install its signing key
+  apt_repository:
+    repo: "ppa:vbernat/haproxy-{{ haproxy_version }}"
+    filename: haproxy
+    state: present
+
+- name: install | dependencies
+  apt:
+    name:
+      - haproxy
+    update_cache: true
+    state: present
+
+- name: install | pip dependencies
+  pip:
+    executable: pip3
+    name:
+      - requests==2.20.1

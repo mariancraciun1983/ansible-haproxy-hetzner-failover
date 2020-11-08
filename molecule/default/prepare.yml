@@ -1,0 +1,14 @@
+---
+- name: Prepare
+  hosts: all
+  gather_facts: true
+  tasks:
+    - name: install_python
+      include_role:
+        name: mariancraciun1983.install_python
+      when: install_python3|bool
+
+    - name: corosync_pacemaker
+      include_role:
+        name: mariancraciun1983.corosync_pacemaker
+      when: install_corosync|bool

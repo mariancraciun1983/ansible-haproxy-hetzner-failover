@@ -1,0 +1,22 @@
+---
+- name: packages
+  import_tasks: packages.yml
+  tags:
+    - packages
+
+- name: certificates
+  import_tasks: certificates.yml
+  when: haproxy_ssl_deploy|bool
+  tags:
+    - certificates
+
+- name: config
+  import_tasks: config.yml
+  tags:
+    - config
+
+- name: config-ha
+  import_tasks: config-ha.yml
+  tags:
+    - config-ha
+  when: haproxy_ha|bool

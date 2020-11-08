@@ -1,0 +1,12 @@
+{% if haproxy_stats %}
+frontend {{ haproxy_stats_name }}
+    listen stats
+    bind {{ haproxy_stats_bind }}
+    mode http
+    stats enable  # Enable stats page
+    stats uri {{ haproxy_stats_uri }}  # Stats URI
+    stats auth {{ haproxy_stats_user | mandatory }}:{{ haproxy_stats_pass | mandatory }}
+    {% for option in haproxy_stats_options -%}
+    stats {{ option }}
+    {% endfor %}
+{% endif %}

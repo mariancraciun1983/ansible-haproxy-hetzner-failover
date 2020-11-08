@@ -1,0 +1,187 @@
+#!/usr/bin/env python3
+import os
+import sys
+import configparser
+import logging
+import time
+import requests
+import signal
+from datetime import datetime
+from optparse import OptionParser
+from requests.exceptions import HTTPError
+
+
+logger = logging.getLogger(__name__)
+formatter = logging.Formatter(
+    '%(asctime)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+
+
+def signal_handler(signum, frame):
+    logger.info('exiting due to sig {}'.format(signum))
+    sys.exit(0)
+
+
+signal.signal(signal.SIGINT, signal_handler)
+
+
+class HetznerClient:
+    def __init__(self, user, password, endpoint):
+        self.auth = (user, password)
+        self.endpoint = endpoint
+
+    def handle_response(self, r):
+        r.raise_for_status()
+        data = r.json()
+        if data and data.get('failover'):
+            return data['failover']
+        else:
+            raise Exception('failed parsing failover info')
+
+    def get_failover(self, ip):
+        url = "{}/failover/{}".format(self.endpoint, ip)
+        r = requests.get(url, auth=self.auth, timeout=10)
+
+        r.raise_for_status()
+        data = r.json()
+        assert isinstance(data, dict), "wrong ws response received"
+        assert (data['failover']['ip'] == ip), "received ip is different than the requested one"
+        return {'ip': data['failover']['ip'], 'target': data['failover']['active_server_ip']}
+
+    def set_failover(self, ip, dest_ip):
+        url = "{}/failover/{}".format(self.endpoint, ip)
+        data = {'active_server_ip': dest_ip}
+        r = requests.post(url, data=data, auth=self.auth, timeout=120)
+        r.raise_for_status()
+        data = r.json()
+        assert isinstance(data, dict), "wrong ws response received"
+        assert (data['failover']['active_server_ip'] == dest_ip), "active ip is different than the requested one"
+
+        return {'ip': data['failover']['ip'], 'target': data['failover']['active_server_ip']}
+
+
+def configure_logger(debug=False):
+
+    class StdErrFilter(logging.Filter):
+        def filter(self, rec):
+            return rec.levelno > logging.INFO
+
+    class StdOutFilter(logging.Filter):
+        def filter(self, rec):
+            return rec.levelno <= logging.INFO
+
+    logger.setLevel(logging.DEBUG if debug else logging.INFO)
+
+    outHandler = logging.StreamHandler(stream=sys.stdout)
+    outHandler.setLevel(logging.DEBUG)
+    outHandler.setFormatter(formatter)
+    outHandler.addFilter(StdOutFilter())
+    logger.addHandler(outHandler)
+
+    errHandler = logging.StreamHandler(stream=sys.stderr)
+    errHandler.setLevel(logging.WARNING)
+    errHandler.setFormatter(formatter)
+    errHandler.addFilter(StdErrFilter())
+    logger.addHandler(errHandler)
+
+
+if __name__ == "__main__":
+    required_options = "config".split()
+    required_configs = "robotws_user robotws_pass failover_ip destination_ip".split()
+    parser = OptionParser('usage: %prog [options] arguments')
+    parser.add_option('--debug', dest='debug', action='store_true', default=False)
+    parser.add_option('--config', dest='config')
+    parser.add_option("--nocheck", dest="nocheck", action='store_true')
+
+    (options, args) = parser.parse_args()
+    for r in required_options:
+        if options.__dict__[r] is None:
+            parser.error("parameter {} required. run with --help for more info".format(r))
+            sys.exit(1)
+
+    configure_logger(options.debug)
+
+    if not options.config:
+        parser.error('{} is missing'.format(options.config))
+        sys.exit(1)
+
+    if not os.path.exists(options.config):
+        parser.error('{} is missing'.format(options.config))
+        sys.exit(1)
+
+    cfgrdr = configparser.ConfigParser()
+    cfgrdr.read(options.config)
+    conf = dict(cfgrdr['DEFAULT'])
+    for r in required_configs:
+        if not conf.get(r):
+            logger.fatal("config {} required. check {}".format(r, options.config))
+            sys.exit(1)
+
+    endpoint = conf['robotws_endpoint']
+    username = conf['robotws_user']
+    password = conf['robotws_pass']
+    failover_ip = conf['failover_ip']
+    destination_ip = conf['destination_ip']
+
+    if conf['logfile']:
+        fh = logging.FileHandler(conf['logfile'])
+        fh.setFormatter(formatter)
+        logger.addHandler(fh)
+
+    start = datetime.now()
+
+    client = HetznerClient(username, password, endpoint)
+
+    current_failover_ip = None
+    if options.nocheck:
+        logger.info('nocheck mode. nothing to do')
+    else:
+        fail = None
+        try:
+            logger.info('check failover ip {}'.format(failover_ip))
+            fail = client.get_failover(failover_ip)
+        except Exception as e:
+            logger.info('Failed fetching the failover. going further')
+            logger.error(e)
+
+        if fail and fail['target'] == destination_ip:
+            logger.info('{} already points to {}'.format(failover_ip, destination_ip))
+            logger.info('no change needed')
+        else:
+            for i in range(0, 3):
+                try:
+                    logger.info('updating failover ...')
+                    fail = client.set_failover(failover_ip, destination_ip)
+                    logger.info('{} now points to {}'.format(fail['ip'], fail['target']))
+                    logger.info('updated successfully')
+                    break
+                except HTTPError as e:
+                    logger.error(e)
+                    r = e.response
+                    if r.status_code == 409 and "FAILOVER_ALREADY_ROUTED" in r.text:
+                        logger.warning('The failover IP address is already routed to the selected server')
+                        break
+                    if r.status_code == 409 and "FAILOVER_LOCKED" in r.text:
+                        logger.warning('Switching the failover IP address is blocked due to another request')
+                        logger.info('Sleeping 70 seconds')
+                        time.sleep(70)
+                        continue
+                    if r.status_code == 500:
+                        logger.warning('Server error during update {}'.format(r.text))
+                        logger.info('Sleeping 70 seconds')
+                        time.sleep(70)
+                        continue
+                    elif r.status_code == 403 and "RATE_LIMIT_EXCEEDED" in r.text:
+                        logger.warning('Rate limit exceeded. sleeping 10 minutes')
+                        for i in range(0, 10):
+                            time.sleep(60)
+                            logger.info('{} minutues left of sleep'.format((9-i)))
+                    raise e
+                except Exception as e:
+                    logger.error('got non-http exception during update {}'.format(str(e)))
+                    raise e
+                    break
+
+    logger.info("Done")
+    sys.exit(0)

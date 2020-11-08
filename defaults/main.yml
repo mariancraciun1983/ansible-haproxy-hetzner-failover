@@ -1,0 +1,93 @@
+haproxy_version: 2.2
+
+# deploy custom static/error files containing node info
+haproxy_config_custom_errors: true
+haproxy_config_custom_default_file: true
+
+# deploy ssl certificates found in filesl/ssl
+haproxy_ssl_deploy: false
+# source directory (local) for ssl certificates
+haproxy_ssl_source:
+# target directory of ssl certificates
+haproxy_ssl_dir: /etc/haproxy/ssl
+
+## Haproxy stats
+haproxy_stats: false
+haproxy_stats_name: haproxy-stats
+haproxy_stats_bind: 127.0.0.1:9000
+haproxy_stats_uri: /
+haproxy_stats_refresh: 5s
+haproxy_stats_options:
+    - show-node
+    - hide-version 
+    - realm Haproxy\ Statistics
+haproxy_stats_user:
+haproxy_stats_pass:
+
+## Frontends
+# example
+# - name: rabbitmq-admin
+#   description: RabbitMQ admin frontend
+#   bind:
+#     - listen: 0.0.0.0:16480
+#   param:
+#     - ssl crt {{ haproxy_ssl_dir }}
+#   mode: http
+#   config:
+#     - default_backend rabbitmq-admin
+haproxy_frontends: []
+
+## Haproxy backends
+# example
+# - name: default
+#   mode: http
+#   config:
+#     - http-request set-header Server haproxy
+#     - http-request return status 200 content-type text/html file /etc/haproxy/static/default.html
+haproxy_backends: []
+
+## Haproxy Listen
+# example
+# - name: redis-read
+#   description: Redis Read listen
+#   bind:
+#     - listen: :16380
+#       param:
+#         - interface vlan4000
+#   mode: tcp
+#   config:
+#     - balance roundrobin
+#     - option tcplog
+#     - option tcp-check
+#     - tcp-check send AUTH\ 1q2w3e4r5t\r\n
+#     - tcp-check expect string +OK
+#     - tcp-check send PING\r\n
+#     - tcp-check expect string +PONG
+#     - tcp-check send QUIT\r\n
+#     - tcp-check expect string +OK
+#     - server redis-1 10.0.0.11:6380 maxconn 1000 check inter 2s
+#     - server redis-2 10.0.0.12:6380 maxconn 1000 check inter 2s
+#     - server redis-3 10.0.0.13:6380 maxconn 1000 check inter 2s
+haproxy_listen: []
+
+# enable HA capabilities
+haproxy_ha: false
+# cleanup/reset pacemaker resources
+haproxy_ha_cleanup: false
+## internal VIP (vswitch ip)
+# example
+# haproxy_ha_vip_internal:
+#   ip: 10.0.0.2
+#   netmask: 24
+#   nic: vlan4000
+haproxy_ha_vip_internal:
+## failover IP - Hetzner public IP
+# example
+# haproxy_ha_failover_external:
+#   ip: 188.40.16.180
+#   netmask: 32
+#   nic: enp2s0
+haproxy_ha_failover_external:
+# hetzner webservice user and password for updating floating ip on failover
+robotws_user:
+robotws_password:

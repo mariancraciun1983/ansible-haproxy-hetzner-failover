@@ -1,0 +1,21 @@
+{% for frontend in haproxy_frontends %}
+frontend {{ frontend.name }}
+  description {{ frontend.description }}
+  {% for bind in frontend.bind %}
+    bind {{ bind.listen }}{% for param in bind.param | default([]) %} {{ param }}{% endfor %}
+
+  {% endfor %}
+  {% if frontend.bind_process is defined %}
+    bind-process {{ frontend.bind_process | join(' ') }}
+  {% endif %}
+
+  {% if frontend.mode is defined %}
+    mode {{ frontend.mode }}
+  {% endif %}
+
+  {% for config in frontend.config | default([]) %}
+  {{config}}
+  {% endfor %}
+
+# done {{ frontend.name }}
+{% endfor %}

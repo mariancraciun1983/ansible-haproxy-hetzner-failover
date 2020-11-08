@@ -1,0 +1,23 @@
+---
+galaxy_info:
+  role_name: haproxy_ha_hetzner_cluster
+  author: Marian Craciun
+  description: >- 
+    Ansible role to configuring a Haproxy HA cluster
+    with corosync and automatic failover on Hetzner Robot servers
+  license: MIT
+
+  min_ansible_version: 2.7
+  galaxy_tags:
+    - haproxy
+    - hetzner
+    - failvoer
+    - corosync
+    - pacemaker
+    - cluster
+  platforms:
+    - name: Ubuntu
+      versions:
+        - focal
+        - bionic
+dependencies: []

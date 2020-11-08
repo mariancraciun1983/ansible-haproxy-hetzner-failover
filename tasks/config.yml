@@ -1,0 +1,55 @@
+---
+- name: config | errors | update error templates
+  template:
+    src: "errors/{{ item }}.http.j2"
+    dest: "/etc/haproxy/errors/{{ item }}.http"
+    owner: haproxy
+    group: haproxy
+    mode: 0640
+  with_items:
+    - 400
+    - 403
+    - 408
+    - 500
+    - 502
+    - 503
+    - 504
+  notify: reload haproxy
+  when: haproxy_config_custom_errors|bool
+
+- name: config | static | ensure static directory
+  file:
+    path: "/etc/haproxy/static/"
+    state: directory
+    owner: root
+    group: root
+    mode: 0750
+  when: haproxy_config_custom_default_file|bool
+
+- name: config | static | update static pages
+  template:
+    src: "static/{{ item }}.j2"
+    dest: "/etc/haproxy/static/{{ item }}"
+    owner: haproxy
+    group: haproxy
+    mode: 0640
+  with_items:
+    - default.html
+  notify: reload haproxy
+  when: haproxy_config_custom_default_file|bool
+
+- name: config | update haproxy.cfg
+  template:
+    src: haproxy.cfg.j2
+    dest: /etc/haproxy/haproxy.cfg
+    owner: haproxy
+    group: haproxy
+    mode: 0640
+    validate: "haproxy -f %s -c"
+  notify: reload haproxy
+
+- name: config | ensure haproxy is started
+  service:
+    name: haproxy
+    state: started
+    enabled: yes

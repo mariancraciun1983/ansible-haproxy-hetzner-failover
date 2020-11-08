@@ -1,0 +1,143 @@
+---
+- name: config-ha | check requirements
+  assert:
+    that:
+      - haproxy_ha_vip_internal.ip is defined
+      - haproxy_ha_vip_internal.netmask is defined
+      - haproxy_ha_vip_internal.nic is defined
+      - haproxy_ha_failover_external.ip is defined
+      - haproxy_ha_failover_external.netmask is defined
+      - haproxy_ha_failover_external.nic is defined
+      - robotws_user and robotws_user|length > 0
+      - robotws_password and robotws_password|length > 0
+    quiet: yes
+
+- name: config-ha | deploy hetzner_failover script
+  copy:
+    src: files/hetzner/hetzner_failover
+    dest: /usr/local/bin/hetzner_failover
+    mode: 0755
+
+- name: config-ha | create /etc/failover/ directory
+  file:
+    path: /etc/failover/
+    state: directory
+    owner: root
+    group: root
+    mode: 0754
+
+- name: config-ha  | deploy hetzner_failover.conf
+  template:
+    src: hetzner_failover.conf.j2
+    dest: /etc/failover/hetzner_failover.conf
+    owner: root
+    group: root
+    mode: 0754
+
+- name: config-ha | ensure haproxy is stopped
+  service:
+    name: haproxy
+    enabled: yes
+    state: stopped
+
+- name: config-ha | config resources from {{ ansible_hostname }}
+  block:
+    - name: pcs | pcs remove haproxy_role attribute from nodes
+      command: "pcs node attribute {{ hostvars[item]['ansible_hostname'] }} haproxy_role="
+      register: pcs_out
+      changed_when: pcs_out.rc == 0
+      failed_when: "pcs_out.rc != 0 and pcs_out.stderr.find('t exist for node') == -1"
+      with_items: "{{ play_hosts }}"
+    - name: config-ha | pcs cleanup
+      block:
+        - name: config-ha | pcs cleanup
+          command: "{{ item }}"
+          register: pcs_out
+          changed_when: pcs_out.rc == 0
+          failed_when: "pcs_out.rc != 0 and pcs_out.stderr.find('could not find') != -1 and pcs_out.stderr.find('does not exist') != -1"
+          with_items:
+            - pcs cluster cib haproxy-ha
+            - pcs -f haproxy-ha resource delete HAproxy
+            - pcs -f haproxy-ha resource group delete HaproxyVips
+            - pcs -f haproxy-ha resource delete HaproxyVipInternal
+            - pcs -f haproxy-ha resource delete HaproxyVipExternal
+            - pcs -f haproxy-ha resource delete HetznerFailoverIp
+            - pcs cluster cib-push --wait 60 haproxy-ha
+            - pcs resource cleanup
+      when: haproxy_ha_cleanup|bool
+
+    - name: config-ha | config resources from {{ ansible_hostname }}
+      block:
+      - name: config-ha | create pcs resources
+        command: "{{ item }}"
+        register: pcs_out
+        changed_when: pcs_out.rc == 0
+        failed_when: "pcs_out.rc != 0 and pcs_out.stderr.find('already exists') == -1"
+        with_items:
+          - pcs cluster cib haproxy-ha
+          - >-
+            pcs -f haproxy-ha resource create HetznerFailoverIp ocf:heartbeat:command_raw
+            start_cmd="/usr/local/bin/hetzner_failover --config /etc/failover/hetzner_failover.conf --debug"
+            stop_cmd="(ps -ef | grep /usr/local/bin/hetzner_failover | grep -v grep | awk '{print $2}' | xargs kill) || true"
+            monitor_cmd="/bin/false"
+            op start timeout=180s on-fail=ignore
+            op stop on-fail=ignore
+            op monitor on-fail=ignore
+            --disabled
+          - >-
+            pcs -f haproxy-ha resource create HAproxy service:haproxy
+            meta migration-threshold=2 failure-timeout=120 allow-migrate=true resource-stickiness=100 target-role=Started
+            op start timeout=20s interval=0
+            op stop timeout=20s interval=0
+            op monitor timeout=10s interval=5s
+            --disabled
+          - >-
+            pcs -f haproxy-ha resource create HaproxyVipInternal ocf:heartbeat:IPaddr2 
+            ip={{haproxy_ha_vip_internal.ip}} 
+            cidr_netmask={{haproxy_ha_vip_internal.netmask}} 
+            nic={{haproxy_ha_vip_internal.nic}} 
+            op monitor interval=5s timeout=10s on-fail=restart
+            --disabled
+          - >-
+            pcs -f haproxy-ha resource create HaproxyVipExternal ocf:heartbeat:IPaddr2 
+            ip={{haproxy_ha_failover_external.ip}} 
+            cidr_netmask={{haproxy_ha_failover_external.netmask}} 
+            nic={{haproxy_ha_failover_external.nic}} 
+            op monitor interval=5s timeout=10s on-fail=restart
+            --disabled
+          - pcs cluster cib-push --wait 60 haproxy-ha
+      - name: config-ha | pcs add attributes to nodes
+        command: "pcs node attribute {{ hostvars[item]['ansible_hostname'] }} haproxy_role=member"
+        register: pcs_out
+        changed_when: pcs_out.rc == 0
+        failed_when: "pcs_out.rc != 0 and pcs_out.stderr.find('already exists') == -1"
+        with_items: "{{ play_hosts }}"
+
+      - name: config-ha | pcs groups and constrains
+        command: "{{ item }}"
+        register: pcs_out
+        changed_when: pcs_out.rc == 0
+        failed_when: "pcs_out.rc != 0 and pcs_out.stderr.find('already exist') == -1"
+        with_items:
+          - pcs cluster cib haproxy-ha
+          - pcs -f haproxy-ha resource group add HaproxyVips HaproxyVipInternal HaproxyVipExternal HetznerFailoverIp
+          - pcs -f haproxy-ha constraint colocation add HaproxyVips with HAproxy INFINITY
+          - pcs -f haproxy-ha constraint order HAproxy then HaproxyVips symmetrical=false kind=Optional
+          - pcs -f haproxy-ha constraint location HAproxy rule score=INFINITY haproxy_role eq member
+          - pcs -f haproxy-ha constraint location HaproxyVips rule score=INFINITY haproxy_role eq member
+          - pcs cluster cib-push --wait 60 haproxy-ha
+      - name: config-ha | pcs enable resources
+        command: "{{ item }}"
+        register: pcs_out
+        changed_when: pcs_out.rc == 0
+        failed_when: "pcs_out.rc != 0 and pcs_out.stderr.find('already exists') == -1"
+        with_items:
+          - pcs cluster cib haproxy-ha
+          - pcs -f haproxy-ha resource enable HAproxy
+          - pcs -f haproxy-ha resource enable HaproxyVipInternal
+          - pcs -f haproxy-ha resource enable HaproxyVipExternal
+          - pcs -f haproxy-ha resource enable HetznerFailoverIp
+          - pcs cluster cib-push --wait 60 haproxy-ha
+      when: not haproxy_ha_cleanup|bool
+
+  when: inventory_hostname == play_hosts[0]

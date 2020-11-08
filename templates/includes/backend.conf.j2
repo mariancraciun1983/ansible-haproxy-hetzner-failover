@@ -1,0 +1,14 @@
+{% for backend in haproxy_backends %}
+
+backend {{ backend.name }}
+
+  {% if backend.mode is defined %}
+    mode {{ backend.mode }}
+  {% endif %}
+
+  {% for config in backend.config | default([]) %}
+    {{config}}
+  {% endfor %}
+
+# done {{ backend.name }}
+{% endfor %}

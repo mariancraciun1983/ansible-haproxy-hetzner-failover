@@ -1,0 +1,49 @@
+global_defs {
+  script_user root
+  enable_script_security
+}
+
+vrrp_script chk_haproxy {
+  script "/usr/bin/killall -0 haproxy"     # cheaper than pidof
+  interval 3                      # check every 2 seconds
+  timeout 5
+  rise 10
+  fall 3
+}
+
+
+vrrp_instance haproxy_internal {
+  debug 2
+  virtual_router_id 100
+  interface vlan4000
+  authentication {
+      auth_type PASS
+      auth_pass 1qdkjsur
+  }
+  garp_master_delay 10
+  garp_master_refresh 60
+  advert_int 1
+
+  {% if haproxy_role == 'master' %}
+  state MASTER
+  priority 101 # 101 on master, 100 on backup
+  {% else %}
+  state BACKUP
+  priority 100 # 101 on master, 100 on backup
+  {% endif %}
+
+  unicast_src_ip {{ internal_ip }}
+  unicast_peer {
+    {% for other_ip in (play_hosts | map('extract', hostvars, 'internal_ip') | list) if internal_ip != other_ip %}
+    {{ other_ip }}
+    {% endfor %}
+  }
+  track_script {
+    chk_haproxy
+  }
+  virtual_ipaddress {
+    {{ failover_ip_internal }} dev vlan{{vswitch_vlan_id}}
+    {{ failover_ip_external }} dev {{ ansible_default_ipv4.interface }}
+  }
+  notify /etc/keepalived/failover.sh
+}

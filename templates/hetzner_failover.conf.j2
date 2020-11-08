@@ -1,0 +1,9 @@
+[DEFAULT]
+robotws_endpoint = https://robot-ws.your-server.de
+robotws_user = {{ robotws_user }}
+robotws_pass = {{ robotws_password }}
+# failover ip that can be moved from one server to another
+failover_ip = {{ haproxy_ha_failover_external.ip }}
+# ip of this server
+destination_ip = {{ ansible_default_ipv4.address }}
+logfile = /var/log/hetzner_failover.log

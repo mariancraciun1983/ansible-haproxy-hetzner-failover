@@ -1,0 +1,20 @@
+{% for listener in haproxy_listen %}
+listen {{ listener.name }}
+  description {{ listener.description }}
+  {% for bind in listener.bind %}
+    bind {{ bind.listen }}{% for param in bind.param | default([]) %} {{ param }}{% endfor %}
+
+  {% endfor %}
+  {% for conf in listener.settings|default([]) %}
+    {{ conf }}
+
+  {% endfor %}
+
+  {% if listener.mode is defined %}
+    mode {{ listener.mode }}
+  {% endif %}
+
+  {% for config in listener.config | default([]) %}
+  {{config}}
+  {% endfor %}
+{% endfor %}
